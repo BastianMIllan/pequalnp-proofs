@@ -1,0 +1,440 @@
+import Mathlib
+import PEqualNP.Defs
+
+namespace PEqualNP.Outside.L_pcx_185
+
+open PEqualNP.ProofComplexity
+
+abbrev V : Type := Fin 5 × Fin 4
+
+-- A Boolean checker for derivations: each line is in the list A, or the resolvent of
+-- two later lines (indices into the tail) on a single variable.
+def chk {W : Type} [DecidableEq W] (A : List (LinClause W)) :
+    List (LinClause W) → List (Option (ℕ × ℕ × W)) → Bool
+  | [], _ => true
+  | C :: π, none :: hs => decide (C ∈ A) && chk A π hs
+  | R :: π, some (i, j, v) :: hs =>
+      (match π[i]?, π[j]? with
+        | some C, some D => decide (({v}, false) ∈ C) && decide (({v}, true) ∈ D) &&
+            decide (R = C.erase ({v}, false) ∪ D.erase ({v}, true))
+        | _, _ => false) && chk A π hs
+  | _ :: _, [] => false
+
+theorem chk_sound {W : Type} [DecidableEq W] (F : Set (LinClause W)) (A : List (LinClause W))
+    (hA : ∀ C ∈ A, C ∈ F) :
+    ∀ (π : List (LinClause W)) (hs : List (Option (ℕ × ℕ × W))), chk A π hs = true →
+      IsLinDerivation F π
+  | [], _, _ => IsLinDerivation.nil
+  | C :: π, none :: hs, h => by
+      simp only [chk, Bool.and_eq_true, decide_eq_true_eq] at h
+      exact IsLinDerivation.ax (chk_sound F A hA π hs h.2) (hA _ h.1)
+  | R :: π, some (i, j, v) :: hs, h => by
+      simp only [chk, Bool.and_eq_true] at h
+      obtain ⟨h1, h2⟩ := h
+      cases hC : π[i]? with
+      | none => simp [hC] at h1
+      | some C =>
+        cases hD : π[j]? with
+        | none => simp [hC, hD] at h1
+        | some D =>
+          simp only [hC, hD, Bool.and_eq_true, decide_eq_true_eq] at h1
+          obtain ⟨⟨m1, m2⟩, m3⟩ := h1
+          exact IsLinDerivation.res (chk_sound F A hA π hs h2)
+            (List.mem_iff_getElem?.mpr ⟨i, hC⟩) (List.mem_iff_getElem?.mpr ⟨j, hD⟩)
+            ⟨{v}, m1, m2, m3⟩
+  | _ :: _, [], h => by simp [chk] at h
+
+def pig (i : Fin 5) : Clause V := Finset.univ.image (fun j : Fin 4 => ((i, j), true))
+
+def hole (i i' : Fin 5) (j : Fin 4) : Clause V := {((i, j), false), ((i', j), false)}
+
+def triples : List (Fin 5 × Fin 5 × Fin 4) :=
+  [(0, 1, 0),
+   (0, 2, 0),
+   (0, 3, 0),
+   (0, 4, 0),
+   (1, 2, 0),
+   (1, 3, 0),
+   (1, 4, 0),
+   (2, 3, 0),
+   (2, 4, 0),
+   (3, 4, 0),
+   (0, 1, 1),
+   (0, 2, 1),
+   (0, 3, 1),
+   (0, 4, 1),
+   (1, 2, 1),
+   (1, 3, 1),
+   (1, 4, 1),
+   (2, 3, 1),
+   (2, 4, 1),
+   (3, 4, 1),
+   (0, 1, 2),
+   (0, 2, 2),
+   (0, 3, 2),
+   (0, 4, 2),
+   (1, 2, 2),
+   (1, 3, 2),
+   (1, 4, 2),
+   (2, 3, 2),
+   (2, 4, 2),
+   (3, 4, 2),
+   (0, 1, 3),
+   (0, 2, 3),
+   (0, 3, 3),
+   (0, 4, 3),
+   (1, 2, 3),
+   (1, 3, 3),
+   (1, 4, 3),
+   (2, 3, 3),
+   (2, 4, 3),
+   (3, 4, 3)]
+
+theorem triples_ne : ∀ t ∈ triples, t.1 ≠ t.2.1 := by decide
+
+def axList : List (LinClause V) :=
+  ((List.finRange 5).map fun i => linOfClause (pig i)) ++
+    (triples.map fun t => linOfClause (hole t.1 t.2.1 t.2.2))
+
+theorem axList_sub : ∀ C ∈ axList, C ∈ (fun C => linOfClause C) '' PHP 5 4 := by
+  intro C hC
+  simp only [axList, List.mem_append, List.mem_map] at hC
+  rcases hC with ⟨i, -, rfl⟩ | ⟨t, ht, rfl⟩
+  · exact ⟨pig i, Or.inl ⟨i, rfl⟩, rfl⟩
+  · exact ⟨hole t.1 t.2.1 t.2.2, Or.inr ⟨t.1, t.2.1, t.2.2, triples_ne t ht, rfl⟩, rfl⟩
+
+def pf : List (LinClause V) :=
+  [∅,
+   {({(4, 3)}, true)},
+   {({(4, 2)}, true), ({(4, 3)}, true)},
+   {({(4, 1)}, true), ({(4, 2)}, true), ({(4, 3)}, true)},
+   {({(4, 3)}, false)},
+   {({(4, 3)}, false), ({(3, 3)}, true)},
+   {({(4, 3)}, false), ({(2, 3)}, true), ({(3, 3)}, true)},
+   {({(4, 3)}, false), ({(1, 3)}, true), ({(2, 3)}, true), ({(3, 3)}, true)},
+   {({(4, 2)}, false)},
+   {({(4, 2)}, false), ({(3, 2)}, true)},
+   {({(4, 2)}, false), ({(2, 2)}, true), ({(3, 2)}, true)},
+   {({(4, 2)}, false), ({(1, 2)}, true), ({(2, 2)}, true), ({(3, 2)}, true)},
+   {({(4, 1)}, false)},
+   {({(4, 1)}, false), ({(3, 1)}, true)},
+   {({(4, 1)}, false), ({(2, 1)}, true), ({(3, 1)}, true)},
+   {({(4, 1)}, false), ({(1, 1)}, true), ({(2, 1)}, true), ({(3, 1)}, true)},
+   {({(4, 0)}, false)},
+   {({(4, 0)}, false), ({(3, 0)}, true)},
+   {({(4, 0)}, false), ({(2, 0)}, true), ({(3, 0)}, true)},
+   {({(4, 0)}, false), ({(1, 0)}, true), ({(2, 0)}, true), ({(3, 0)}, true)},
+   {({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true), ({(3, 0)}, true)},
+   {({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true), ({(3, 0)}, true), ({(3, 3)}, true)},
+   {({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true), ({(3, 0)}, true), ({(3, 2)}, true), ({(3, 3)}, true)},
+   {({(3, 3)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true)},
+   {({(3, 3)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true), ({(2, 3)}, true)},
+   {({(3, 3)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(1, 3)}, true), ({(2, 0)}, true), ({(2, 3)}, true)},
+   {({(3, 2)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true)},
+   {({(3, 2)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true), ({(2, 2)}, true)},
+   {({(3, 2)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(1, 2)}, true), ({(2, 0)}, true), ({(2, 2)}, true)},
+   {({(3, 1)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true)},
+   {({(3, 1)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(2, 0)}, true), ({(2, 1)}, true)},
+   {({(3, 1)}, false), ({(0, 0)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(2, 0)}, true), ({(2, 1)}, true)},
+   {({(0, 1)}, true), ({(1, 1)}, true), ({(2, 1)}, true), ({(3, 1)}, true)},
+   {({(0, 1)}, true), ({(1, 1)}, true), ({(2, 1)}, true), ({(3, 1)}, true), ({(3, 3)}, true)},
+   {({(0, 1)}, true), ({(1, 1)}, true), ({(2, 1)}, true), ({(3, 1)}, true), ({(3, 2)}, true), ({(3, 3)}, true)},
+   {({(3, 3)}, false), ({(0, 1)}, true), ({(1, 1)}, true), ({(2, 1)}, true)},
+   {({(3, 3)}, false), ({(0, 1)}, true), ({(1, 1)}, true), ({(2, 1)}, true), ({(2, 3)}, true)},
+   {({(3, 3)}, false), ({(0, 1)}, true), ({(1, 1)}, true), ({(1, 3)}, true), ({(2, 1)}, true), ({(2, 3)}, true)},
+   {({(3, 2)}, false), ({(0, 1)}, true), ({(1, 1)}, true), ({(2, 1)}, true)},
+   {({(3, 2)}, false), ({(0, 1)}, true), ({(1, 1)}, true), ({(2, 1)}, true), ({(2, 2)}, true)},
+   {({(3, 2)}, false), ({(0, 1)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(2, 1)}, true), ({(2, 2)}, true)},
+   {({(3, 0)}, false), ({(0, 1)}, true), ({(1, 1)}, true), ({(2, 1)}, true)},
+   {({(3, 0)}, false), ({(0, 1)}, true), ({(1, 1)}, true), ({(2, 0)}, true), ({(2, 1)}, true)},
+   {({(3, 0)}, false), ({(0, 1)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(2, 0)}, true), ({(2, 1)}, true)},
+   {({(0, 2)}, true), ({(1, 2)}, true), ({(2, 2)}, true), ({(3, 2)}, true)},
+   {({(0, 2)}, true), ({(1, 2)}, true), ({(2, 2)}, true), ({(3, 2)}, true), ({(3, 3)}, true)},
+   {({(0, 2)}, true), ({(1, 2)}, true), ({(2, 2)}, true), ({(3, 1)}, true), ({(3, 2)}, true), ({(3, 3)}, true)},
+   {({(3, 3)}, false), ({(0, 2)}, true), ({(1, 2)}, true), ({(2, 2)}, true)},
+   {({(3, 3)}, false), ({(0, 2)}, true), ({(1, 2)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(3, 3)}, false), ({(0, 2)}, true), ({(1, 2)}, true), ({(1, 3)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(3, 1)}, false), ({(0, 2)}, true), ({(1, 2)}, true), ({(2, 2)}, true)},
+   {({(3, 1)}, false), ({(0, 2)}, true), ({(1, 2)}, true), ({(2, 1)}, true), ({(2, 2)}, true)},
+   {({(3, 1)}, false), ({(0, 2)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(2, 1)}, true), ({(2, 2)}, true)},
+   {({(3, 0)}, false), ({(0, 2)}, true), ({(1, 2)}, true), ({(2, 2)}, true)},
+   {({(3, 0)}, false), ({(0, 2)}, true), ({(1, 2)}, true), ({(2, 0)}, true), ({(2, 2)}, true)},
+   {({(3, 0)}, false), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 2)}, true), ({(2, 0)}, true), ({(2, 2)}, true)},
+   {({(0, 3)}, true), ({(1, 3)}, true), ({(2, 3)}, true), ({(3, 3)}, true)},
+   {({(0, 3)}, true), ({(1, 3)}, true), ({(2, 3)}, true), ({(3, 2)}, true), ({(3, 3)}, true)},
+   {({(0, 3)}, true), ({(1, 3)}, true), ({(2, 3)}, true), ({(3, 1)}, true), ({(3, 2)}, true), ({(3, 3)}, true)},
+   {({(3, 2)}, false), ({(0, 3)}, true), ({(1, 3)}, true), ({(2, 3)}, true)},
+   {({(3, 2)}, false), ({(0, 3)}, true), ({(1, 3)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(3, 2)}, false), ({(0, 3)}, true), ({(1, 2)}, true), ({(1, 3)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(3, 1)}, false), ({(0, 3)}, true), ({(1, 3)}, true), ({(2, 3)}, true)},
+   {({(3, 1)}, false), ({(0, 3)}, true), ({(1, 3)}, true), ({(2, 1)}, true), ({(2, 3)}, true)},
+   {({(3, 1)}, false), ({(0, 3)}, true), ({(1, 1)}, true), ({(1, 3)}, true), ({(2, 1)}, true), ({(2, 3)}, true)},
+   {({(3, 0)}, false), ({(0, 3)}, true), ({(1, 3)}, true), ({(2, 3)}, true)},
+   {({(3, 0)}, false), ({(0, 3)}, true), ({(1, 3)}, true), ({(2, 0)}, true), ({(2, 3)}, true)},
+   {({(3, 0)}, false), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 3)}, true), ({(2, 0)}, true), ({(2, 3)}, true)},
+   {({(0, 0)}, true), ({(0, 1)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(2, 0)}, true), ({(2, 1)}, true)},
+   {({(0, 0)}, true), ({(0, 1)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(2, 0)}, true), ({(2, 1)}, true), ({(2, 3)}, true)},
+   {({(2, 3)}, false), ({(0, 0)}, true), ({(0, 1)}, true), ({(1, 0)}, true), ({(1, 1)}, true)},
+   {({(2, 3)}, false), ({(0, 0)}, true), ({(0, 1)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(1, 3)}, true)},
+   {({(2, 2)}, false), ({(0, 0)}, true), ({(0, 1)}, true), ({(1, 0)}, true), ({(1, 1)}, true)},
+   {({(2, 2)}, false), ({(0, 0)}, true), ({(0, 1)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(1, 2)}, true)},
+   {({(0, 0)}, true), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 2)}, true), ({(2, 0)}, true), ({(2, 2)}, true)},
+   {({(0, 0)}, true), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 2)}, true), ({(2, 0)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(2, 3)}, false), ({(0, 0)}, true), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 2)}, true)},
+   {({(2, 3)}, false), ({(0, 0)}, true), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(2, 1)}, false), ({(0, 0)}, true), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 2)}, true)},
+   {({(2, 1)}, false), ({(0, 0)}, true), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(1, 2)}, true)},
+   {({(0, 1)}, true), ({(0, 2)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(2, 1)}, true), ({(2, 2)}, true)},
+   {({(0, 1)}, true), ({(0, 2)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(2, 1)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(2, 3)}, false), ({(0, 1)}, true), ({(0, 2)}, true), ({(1, 1)}, true), ({(1, 2)}, true)},
+   {({(2, 3)}, false), ({(0, 1)}, true), ({(0, 2)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(2, 0)}, false), ({(0, 1)}, true), ({(0, 2)}, true), ({(1, 1)}, true), ({(1, 2)}, true)},
+   {({(2, 0)}, false), ({(0, 1)}, true), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(1, 2)}, true)},
+   {({(0, 0)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 3)}, true), ({(2, 0)}, true), ({(2, 3)}, true)},
+   {({(0, 0)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 3)}, true), ({(2, 0)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(2, 2)}, false), ({(0, 0)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 3)}, true)},
+   {({(2, 2)}, false), ({(0, 0)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(2, 1)}, false), ({(0, 0)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 3)}, true)},
+   {({(2, 1)}, false), ({(0, 0)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(1, 3)}, true)},
+   {({(0, 1)}, true), ({(0, 3)}, true), ({(1, 1)}, true), ({(1, 3)}, true), ({(2, 1)}, true), ({(2, 3)}, true)},
+   {({(0, 1)}, true), ({(0, 3)}, true), ({(1, 1)}, true), ({(1, 3)}, true), ({(2, 1)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(2, 2)}, false), ({(0, 1)}, true), ({(0, 3)}, true), ({(1, 1)}, true), ({(1, 3)}, true)},
+   {({(2, 2)}, false), ({(0, 1)}, true), ({(0, 3)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(2, 0)}, false), ({(0, 1)}, true), ({(0, 3)}, true), ({(1, 1)}, true), ({(1, 3)}, true)},
+   {({(2, 0)}, false), ({(0, 1)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(1, 3)}, true)},
+   {({(0, 2)}, true), ({(0, 3)}, true), ({(1, 2)}, true), ({(1, 3)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(0, 2)}, true), ({(0, 3)}, true), ({(1, 2)}, true), ({(1, 3)}, true), ({(2, 1)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(2, 1)}, false), ({(0, 2)}, true), ({(0, 3)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(2, 1)}, false), ({(0, 2)}, true), ({(0, 3)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(2, 0)}, false), ({(0, 2)}, true), ({(0, 3)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(2, 0)}, false), ({(0, 2)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(0, 0)}, true), ({(0, 1)}, true), ({(0, 2)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(1, 2)}, true)},
+   {({(1, 3)}, false), ({(0, 0)}, true), ({(0, 1)}, true), ({(0, 2)}, true)},
+   {({(0, 0)}, true), ({(0, 1)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 1)}, true), ({(1, 3)}, true)},
+   {({(1, 2)}, false), ({(0, 0)}, true), ({(0, 1)}, true), ({(0, 3)}, true)},
+   {({(0, 0)}, true), ({(0, 2)}, true), ({(0, 3)}, true), ({(1, 0)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(1, 1)}, false), ({(0, 0)}, true), ({(0, 2)}, true), ({(0, 3)}, true)},
+   {({(0, 1)}, true), ({(0, 2)}, true), ({(0, 3)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(1, 0)}, false), ({(0, 1)}, true), ({(0, 2)}, true), ({(0, 3)}, true)},
+   {({(3, 3)}, false), ({(4, 3)}, false)},
+   {({(2, 3)}, false), ({(4, 3)}, false)},
+   {({(2, 3)}, false), ({(3, 3)}, false)},
+   {({(1, 3)}, false), ({(4, 3)}, false)},
+   {({(1, 3)}, false), ({(3, 3)}, false)},
+   {({(1, 3)}, false), ({(2, 3)}, false)},
+   {({(0, 3)}, false), ({(4, 3)}, false)},
+   {({(0, 3)}, false), ({(3, 3)}, false)},
+   {({(0, 3)}, false), ({(2, 3)}, false)},
+   {({(0, 3)}, false), ({(1, 3)}, false)},
+   {({(3, 2)}, false), ({(4, 2)}, false)},
+   {({(2, 2)}, false), ({(4, 2)}, false)},
+   {({(2, 2)}, false), ({(3, 2)}, false)},
+   {({(1, 2)}, false), ({(4, 2)}, false)},
+   {({(1, 2)}, false), ({(3, 2)}, false)},
+   {({(1, 2)}, false), ({(2, 2)}, false)},
+   {({(0, 2)}, false), ({(4, 2)}, false)},
+   {({(0, 2)}, false), ({(3, 2)}, false)},
+   {({(0, 2)}, false), ({(2, 2)}, false)},
+   {({(0, 2)}, false), ({(1, 2)}, false)},
+   {({(3, 1)}, false), ({(4, 1)}, false)},
+   {({(2, 1)}, false), ({(4, 1)}, false)},
+   {({(2, 1)}, false), ({(3, 1)}, false)},
+   {({(1, 1)}, false), ({(4, 1)}, false)},
+   {({(1, 1)}, false), ({(3, 1)}, false)},
+   {({(1, 1)}, false), ({(2, 1)}, false)},
+   {({(0, 1)}, false), ({(4, 1)}, false)},
+   {({(0, 1)}, false), ({(3, 1)}, false)},
+   {({(0, 1)}, false), ({(2, 1)}, false)},
+   {({(0, 1)}, false), ({(1, 1)}, false)},
+   {({(3, 0)}, false), ({(4, 0)}, false)},
+   {({(2, 0)}, false), ({(4, 0)}, false)},
+   {({(2, 0)}, false), ({(3, 0)}, false)},
+   {({(1, 0)}, false), ({(4, 0)}, false)},
+   {({(1, 0)}, false), ({(3, 0)}, false)},
+   {({(1, 0)}, false), ({(2, 0)}, false)},
+   {({(0, 0)}, false), ({(4, 0)}, false)},
+   {({(0, 0)}, false), ({(3, 0)}, false)},
+   {({(0, 0)}, false), ({(2, 0)}, false)},
+   {({(0, 0)}, false), ({(1, 0)}, false)},
+   {({(4, 0)}, true), ({(4, 1)}, true), ({(4, 2)}, true), ({(4, 3)}, true)},
+   {({(3, 0)}, true), ({(3, 1)}, true), ({(3, 2)}, true), ({(3, 3)}, true)},
+   {({(2, 0)}, true), ({(2, 1)}, true), ({(2, 2)}, true), ({(2, 3)}, true)},
+   {({(1, 0)}, true), ({(1, 1)}, true), ({(1, 2)}, true), ({(1, 3)}, true)},
+   {({(0, 0)}, true), ({(0, 1)}, true), ({(0, 2)}, true), ({(0, 3)}, true)}]
+
+def hints : List (Option (ℕ × ℕ × V)) :=
+  [some (3, 0, (4, 3)),
+   some (6, 0, (4, 2)),
+   some (9, 0, (4, 1)),
+   some (12, 148, (4, 0)),
+   some (107, 0, (3, 3)),
+   some (107, 0, (2, 3)),
+   some (108, 0, (1, 3)),
+   some (110, 48, (0, 3)),
+   some (113, 0, (3, 2)),
+   some (113, 0, (2, 2)),
+   some (114, 0, (1, 2)),
+   some (116, 32, (0, 2)),
+   some (119, 0, (3, 1)),
+   some (119, 0, (2, 1)),
+   some (120, 0, (1, 1)),
+   some (122, 16, (0, 1)),
+   some (125, 0, (3, 0)),
+   some (125, 0, (2, 0)),
+   some (126, 0, (1, 0)),
+   some (128, 0, (0, 0)),
+   some (2, 0, (3, 3)),
+   some (4, 0, (3, 2)),
+   some (6, 130, (3, 1)),
+   some (90, 0, (2, 3)),
+   some (91, 0, (1, 3)),
+   some (93, 60, (0, 3)),
+   some (97, 0, (2, 2)),
+   some (98, 0, (1, 2)),
+   some (100, 45, (0, 2)),
+   some (104, 0, (2, 1)),
+   some (105, 0, (1, 1)),
+   some (107, 36, (0, 1)),
+   some (2, 0, (3, 3)),
+   some (4, 0, (3, 2)),
+   some (6, 118, (3, 0)),
+   some (78, 0, (2, 3)),
+   some (79, 0, (1, 3)),
+   some (81, 54, (0, 3)),
+   some (85, 0, (2, 2)),
+   some (86, 0, (1, 2)),
+   some (88, 39, (0, 2)),
+   some (102, 0, (2, 0)),
+   some (103, 0, (1, 0)),
+   some (105, 24, (0, 0)),
+   some (2, 0, (3, 3)),
+   some (4, 0, (3, 1)),
+   some (6, 106, (3, 0)),
+   some (66, 0, (2, 3)),
+   some (67, 0, (1, 3)),
+   some (69, 48, (0, 3)),
+   some (83, 0, (2, 1)),
+   some (84, 0, (1, 1)),
+   some (86, 27, (0, 1)),
+   some (90, 0, (2, 0)),
+   some (91, 0, (1, 0)),
+   some (93, 18, (0, 0)),
+   some (2, 0, (3, 2)),
+   some (4, 0, (3, 1)),
+   some (6, 94, (3, 0)),
+   some (64, 0, (2, 2)),
+   some (65, 0, (1, 2)),
+   some (67, 36, (0, 2)),
+   some (71, 0, (2, 1)),
+   some (72, 0, (1, 1)),
+   some (74, 27, (0, 1)),
+   some (78, 0, (2, 0)),
+   some (79, 0, (1, 0)),
+   some (81, 18, (0, 0)),
+   some (1, 0, (2, 3)),
+   some (2, 84, (2, 2)),
+   some (46, 0, (1, 3)),
+   some (48, 34, (0, 3)),
+   some (54, 0, (1, 2)),
+   some (56, 30, (0, 2)),
+   some (1, 0, (2, 3)),
+   some (2, 78, (2, 1)),
+   some (40, 0, (1, 3)),
+   some (42, 30, (0, 3)),
+   some (58, 0, (1, 1)),
+   some (60, 24, (0, 1)),
+   some (1, 0, (2, 3)),
+   some (2, 72, (2, 0)),
+   some (34, 0, (1, 3)),
+   some (36, 26, (0, 3)),
+   some (62, 0, (1, 0)),
+   some (64, 18, (0, 0)),
+   some (1, 0, (2, 2)),
+   some (2, 66, (2, 1)),
+   some (38, 0, (1, 2)),
+   some (40, 18, (0, 2)),
+   some (46, 0, (1, 1)),
+   some (48, 14, (0, 1)),
+   some (1, 0, (2, 2)),
+   some (2, 60, (2, 0)),
+   some (32, 0, (1, 2)),
+   some (34, 14, (0, 2)),
+   some (50, 0, (1, 0)),
+   some (52, 8, (0, 0)),
+   some (1, 0, (2, 1)),
+   some (2, 54, (2, 0)),
+   some (36, 0, (1, 1)),
+   some (38, 8, (0, 1)),
+   some (44, 0, (1, 0)),
+   some (46, 4, (0, 0)),
+   some (0, 50, (1, 3)),
+   some (15, 50, (0, 3)),
+   some (0, 48, (1, 2)),
+   some (23, 48, (0, 2)),
+   some (0, 46, (1, 1)),
+   some (31, 46, (0, 1)),
+   some (0, 44, (1, 0)),
+   some (39, 44, (0, 0)),
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none,
+   none]
+
+set_option maxRecDepth 100000 in
+theorem pf_ok : chk axList pf hints = true := by decide +kernel
+
+set_option maxRecDepth 100000 in
+theorem pf_empty : (∅ : LinClause V) ∈ pf := by decide +kernel
+
+set_option maxRecDepth 100000 in
+set_option maxRecDepth 100000 in
+theorem pf_len : pf.length ≤ 173 := by decide +kernel
+
+end PEqualNP.Outside.L_pcx_185
+
+theorem PEqualNP.Outside.L_pcx_185 : ∃ π : List (PEqualNP.ProofComplexity.LinClause (Fin 5 × Fin 4)), PEqualNP.ProofComplexity.IsLinRefutation (PEqualNP.ProofComplexity.PHP 5 4) π ∧ π.length ≤ 173 := by
+  exact ⟨PEqualNP.Outside.L_pcx_185.pf,
+    ⟨PEqualNP.Outside.L_pcx_185.chk_sound _ _ PEqualNP.Outside.L_pcx_185.axList_sub _ _
+      PEqualNP.Outside.L_pcx_185.pf_ok, PEqualNP.Outside.L_pcx_185.pf_empty⟩,
+    PEqualNP.Outside.L_pcx_185.pf_len⟩
